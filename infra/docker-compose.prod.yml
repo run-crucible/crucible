@@ -1,0 +1,112 @@
+name: crucible
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: crucible
+      POSTGRES_USER: crucible
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"   # 5433 → avoid clash with host's existing postgres
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "crucible"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    volumes:
+      - miniodata:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── App services ────────────────────────────────────────────────────────────
+
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      DATABASE_URL: postgresql://crucible:${DB_PASSWORD}@postgres:5432/crucible
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ../
+      dockerfile: engine/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://crucible:${DB_PASSWORD}@postgres:5432/crucible
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET_TRANSCRIPTS: transcripts
+      S3_BUCKET_REPORTS: reports
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ATTACKER_MODEL: claude-opus-4-5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  mock-agent:
+    build:
+      context: ../
+      dockerfile: mock_agent/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8001"
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5174:80"
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
