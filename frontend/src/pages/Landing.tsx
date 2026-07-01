@@ -132,7 +132,7 @@ function FaqAccordion() {
 
 function TokenSection() {
   const [copied, setCopied] = useState(false);
-  const CONTRACT = "TBA — contract not yet deployed";
+  const CONTRACT = "4reMMxXdhJWpQ64avECssyiiXEENg34YNDYPsoQypump";
 
   function copy() {
     navigator.clipboard.writeText(CONTRACT).then(() => {
