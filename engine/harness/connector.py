@@ -24,8 +24,10 @@ class HostedConnector:
 
     def __init__(self, manifest: AgentManifest) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        m = manifest.model
-        self._model  = m if (m and m not in ("default", "")) else settings.attacker_model
+        # Hosted targets always run on the configured mid-tier target model, so
+        # robustness reflects the user's prompt rather than the flagship model's
+        # near-perfect refusal behaviour.
+        self._model = settings.target_model
 
         # Build the effective system prompt: user's base + auto-embedded canaries.
         # The canary is planted the way a real secret appears in a system prompt —

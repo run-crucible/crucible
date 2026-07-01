@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     attacker_temperature: float = 0.7
     attacker_seed: int = 42
 
+    # Target LLM for HOSTED agents. Deliberately a mid-tier model — this mirrors
+    # how real-world agents are actually deployed (fast, cheaper models) and lets
+    # a well-written system prompt genuinely differentiate itself. Running hosted
+    # targets on the flagship (opus) makes them near-unbreakable regardless of the
+    # user's prompt, which defeats the purpose of the proving ground.
+    target_model: str = "claude-haiku-4-5"
+
     # Corpus paths
     held_out_store_path: str = "/corpus/held_out"
     public_corpus_path: str = "/corpus/public"
