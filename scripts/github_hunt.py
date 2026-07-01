@@ -51,25 +51,44 @@ if GH_TOKEN:
 # ─── Search queries that reliably yield system prompts ───────────────────────
 
 SEARCH_QUERIES = [
-    # Explicit filenames
+    # Generic agent filenames
     'filename:system_prompt.txt "You are"',
     'filename:system_prompt.md "You are"',
     'filename:SYSTEM_PROMPT.txt "You are"',
     'filename:.system_prompt "You are"',
     'filename:system.md "You are" assistant',
     'filename:prompt.txt "You are a" assistant',
-    # Common patterns in YAML / JSON agent configs
     'filename:agent.yaml "system_prompt:"',
-    'filename:config.yaml "system_prompt:"',
     'filename:agent.json "system_prompt"',
-    # Well-known leaked / published prompt collections
     '"You are Cursor" language:markdown',
     '"You are GitHub Copilot" language:markdown',
-    '"You are Claude" "Anthropic" language:markdown',
     '"You are a helpful assistant" "confidential" language:markdown',
-    # Repos that are essentially prompt collections
-    'repo:f/awesome-chatgpt-prompts "Act as"',
-    'repo:humanlooplabs/awesome-system-prompts "You are"',
+    # ── Crypto / DeFi / Web3 AI agents ──────────────────────────────────────
+    '"You are" "Solana" "wallet" "system_prompt"',
+    '"You are" "DeFi" "assistant" filename:system_prompt',
+    '"You are" "crypto" "trading" "system_prompt" language:markdown',
+    '"You are" "Base" "blockchain" agent filename:system_prompt',
+    '"You are" "Ethereum" "wallet" agent "system_prompt"',
+    '"You are" "NFT" assistant filename:system_prompt',
+    '"You are" "on-chain" agent filename:system_prompt',
+    'filename:system_prompt.txt "Solana"',
+    'filename:system_prompt.md "DeFi"',
+    'filename:system_prompt.txt "blockchain" "You are"',
+    '"You are a crypto" assistant filename:system_prompt',
+    '"You are" "swap" "liquidity" "pool" agent filename:system_prompt',
+    '"You are" "coinbase" OR "Base chain" agent filename:system_prompt',
+    'filename:system_prompt.txt "private key" OR "seed phrase" "never"',
+    # AI trading / quant agents
+    '"You are" "trading bot" filename:system_prompt',
+    '"You are" "portfolio" "rebalance" agent filename:system_prompt',
+    '"You are" "market maker" agent language:markdown',
+    # Known crypto AI agent repos
+    'repo:sendaifun/solana-agent-kit "system" "prompt"',
+    'repo:brian-knows/brian-ai "system_prompt"',
+    'repo:elizaOS/eliza "system" "You are"',
+    '"You are" "elizaOS" OR "eliza agent" language:markdown',
+    '"You are" "pump.fun" OR "pumpfun" agent',
+    '"You are" "Uniswap" "liquidity" agent filename:system_prompt',
 ]
 
 # ─── Known high-quality repos with curated system prompts ───────────────────
@@ -80,7 +99,11 @@ CURATED_REPOS = [
     ("humanlooplabs/awesome-system-prompts", "prompts/", "Awesome Prompts:"),
     ("jujumilk3/leaked-system-prompts",   "",            "Leaked:"),
     ("mustvlad/ChatGPT-System-Prompts",   "prompts/",    "ChatGPT Prompts:"),
-    ("yokoffing/ChatGPT-Prompts",         "",            "Community Prompt:"),
+    # Crypto / Web3 agent repos
+    ("sendaifun/solana-agent-kit",        "examples/",   "Solana Agent Kit:"),
+    ("elizaOS/eliza",                     "characters/", "ElizaOS Agent:"),
+    ("brian-knows/brian-ai",              "",            "Brian AI:"),
+    ("Base-Labs/base-agent",              "",            "Base Agent:"),
 ]
 
 # ─── Data model ──────────────────────────────────────────────────────────────
@@ -323,6 +346,17 @@ def register_and_run(prompt: FoundPrompt, dry_run: bool = False) -> Optional[str
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────
 
+def _existing_agent_names() -> set[str]:
+    """Fetch names of agents already registered in CRUCIBLE (for dedup)."""
+    try:
+        r = httpx.get(f"{CRUCIBLE_BASE}/agents", timeout=10)
+        if r.status_code == 200:
+            return {a["name"].strip().lower() for a in r.json()}
+    except Exception:
+        pass
+    return set()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Hunt GitHub for system prompts → CRUCIBLE")
     parser.add_argument("--dry-run", action="store_true", help="find prompts but don't submit to CRUCIBLE")
@@ -331,7 +365,7 @@ def main() -> None:
     args = parser.parse_args()
 
     global _MIN_WORDS
-    _MIN_WORDS = args.min_length // 5  # rough word estimate
+    _MIN_WORDS = args.min_length // 5
 
     print("=" * 60)
     print("  CRUCIBLE GitHub Hunter")
@@ -340,11 +374,17 @@ def main() -> None:
         print("WARNING: no GitHub token — rate limits will be very tight (10 req/min)")
         print("Set GITHUB_TOKEN env var or log in with: gh auth login\n")
 
-    prompts = search_github(limit=args.limit)
-    print(f"\nFound {len(prompts)} valid system prompts.\n")
+    # Load existing names to avoid re-submitting
+    existing = _existing_agent_names()
+    print(f"Skipping {len(existing)} already-registered agents.\n")
+
+    prompts = search_github(limit=args.limit + len(existing))
+    # Filter out already-registered agents
+    prompts = [p for p in prompts if p.name.strip().lower() not in existing][:args.limit]
+    print(f"\nFound {len(prompts)} new system prompts to submit.\n")
 
     if not prompts:
-        print("No prompts found. Try increasing --limit or check your GH_TOKEN.")
+        print("No new prompts found. Try increasing --limit or check your GH_TOKEN.")
         return
 
     print("=" * 60)
