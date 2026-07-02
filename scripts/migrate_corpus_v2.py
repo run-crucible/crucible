@@ -202,26 +202,7 @@ async def main() -> None:
     db = await psycopg.AsyncConnection.connect(DATABASE_URL)
     print("Connected to DB")
 
-    # 1. Insert new vectors (skip if already exists)
-    inserted = 0
-    for vid, framework, category, difficulty, content in NEW_VECTORS:
-        content_ref = json.dumps(content)
-        try:
-            await db.execute(
-                """
-                INSERT INTO vectors (id, framework, category, difficulty, content_ref, severity_default)
-                VALUES (%s, %s, %s, %s, %s, 'medium')
-                ON CONFLICT (id) DO NOTHING
-                """,
-                (vid, framework, category, difficulty, content_ref),
-            )
-            inserted += 1
-        except Exception as e:
-            print(f"  WARN vector {vid}: {e}")
-    await db.commit()
-    print(f"Inserted {inserted} new vectors")
-
-    # 2. Get current corpus version
+    # Get existing corpus version ID to attach new vectors to it
     row = await (await db.execute(
         "SELECT id, version FROM corpus_versions ORDER BY version DESC LIMIT 1"
     )).fetchone()
@@ -231,7 +212,28 @@ async def main() -> None:
     old_cv_id, old_version = row[0], row[1]
     print(f"Current corpus version: {old_version} ({old_cv_id})")
 
-    # 3. Create new corpus version
+    # 1. Insert new vectors (skip if already exists), using existing corpus_version_id
+    inserted = 0
+    for vid, framework, category, difficulty, content in NEW_VECTORS:
+        content_ref = json.dumps(content)
+        try:
+            await db.execute(
+                """
+                INSERT INTO vectors (id, framework, category, difficulty, content_ref,
+                                     severity_default, visibility, corpus_version_id)
+                VALUES (%s, %s, %s, %s, %s, 'medium', 'public', %s)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (vid, framework, category, difficulty, content_ref, old_cv_id),
+            )
+            inserted += 1
+        except Exception as e:
+            print(f"  WARN vector {vid}: {e}")
+            await db.rollback()
+    await db.commit()
+    print(f"Inserted {inserted} new vectors")
+
+    # 2. Create new corpus version
     new_cv_id = str(uuid.uuid4())
     new_version = old_version + 1
     await db.execute(
@@ -239,15 +241,15 @@ async def main() -> None:
         (new_cv_id, new_version, "v2: +34 diverse garak/pyrit vectors, severity weighting, turn penalty"),
     )
 
-    # 4. Build full vector list for new benchmark set
+    # 3. Build full vector list for new benchmark set
     all_vector_ids = ORIGINAL_VECTOR_IDS + [v[0] for v in NEW_VECTORS]
     new_bs_id = str(uuid.uuid4())
     await db.execute(
         """
         INSERT INTO benchmark_sets (id, corpus_version_id, vector_ids, frozen_at)
-        VALUES (%s, %s, %s, now())
+        VALUES (%s, %s, %s::json, now())
         """,
-        (new_bs_id, new_cv_id, all_vector_ids),
+        (new_bs_id, new_cv_id, json.dumps(all_vector_ids)),
     )
     await db.commit()
     print(f"New benchmark set: {new_bs_id} ({len(all_vector_ids)} vectors, corpus v{new_version})")
