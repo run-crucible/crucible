@@ -102,13 +102,14 @@ export async function trialRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(trial);
   });
 
-  /** GET /trials/:id/attempts — ordered attempt log */
+  /** GET /trials/:id/attempts — ordered attempt log with vector content */
   app.get("/trials/:id/attempts", async (request, reply) => {
     const { id } = request.params as { id: string };
     const attempts = await sql`
       SELECT a.seq, a.outcome, a.detector, a.severity, a.turns,
              a.created_at, a.finished_at,
-             v.category, v.difficulty, v.framework
+             v.category, v.difficulty, v.framework,
+             v.content_ref AS vector_content
       FROM attempts a
       JOIN vectors v ON v.id = a.vector_id
       WHERE a.trial_id = ${id}

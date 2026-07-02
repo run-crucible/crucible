@@ -46,7 +46,7 @@ export function useCombatLog(trialId: string | undefined): CombatLogState {
   const [currentCategory, setCurrentCategory] = useState("");
   const [currentFramework, setCurrentFramework] = useState("");
   const [currentVector, setCurrentVector] = useState(0);
-  const [totalVectors, setTotalVectors] = useState(12);
+  const [totalVectors, setTotalVectors] = useState(46);
   const [phaseChange, setPhaseChange] = useState(0);
   const lastCategory = useRef("");
   const wsRef = useRef<WebSocket | null>(null);
@@ -110,7 +110,7 @@ export function useCombatLog(trialId: string | undefined): CombatLogState {
 
       const cat = turn.category ?? "";
       const fw  = turn.framework ?? "";
-      const tot = turn.total_vectors ?? 12;
+      const tot = turn.total_vectors ?? 46;
 
       if (cat && cat !== lastCategory.current) {
         lastCategory.current = cat;

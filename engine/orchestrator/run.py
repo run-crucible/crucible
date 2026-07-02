@@ -158,4 +158,5 @@ def _enrich(result: AttemptResult, vector: Vector) -> AttemptResult:
     """
     object.__setattr__(result, "category", vector.category.value)
     object.__setattr__(result, "difficulty", vector.difficulty)
+    object.__setattr__(result, "framework", vector.framework)
     return result
